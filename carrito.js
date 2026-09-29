@@ -1,19 +1,28 @@
 // Micro frontend: CARRITO  (equipo "Pedidos")
 // Contrato: window.renderCarrito(idContenedor) / window.unmountCarrito(idContenedor)
 // Escucha:  'carrito:agregar'      { id, nombre, precio }
-// Publica:  'carrito:actualizado'  { cantidad, subtotal, servicio, total, version }  (v2)
+// Publica:  'carrito:actualizado'  { cantidad, subtotal, servicio, total, version }  (v2; total incluye el servicio)
 // Publica:  'pedido:confirmado'    { id, items, total, version }                     (v1)
+// Estado:   sessionStorage['saborupc:carrito'] (propio de este micro frontend)
+// Config:   <script src="carrito.js" data-tokens="URL/tokens.css"></script>
 (function () {
-    if (window.renderCarrito) return;  // ya cargado
-  const VERSION = '1.1.0';
+  if (window.renderCarrito) return;  // ya cargado
+
+  const VERSION = '1.2.0';
   const PORCENTAJE_SERVICIO = 0.10; // 10 %
+  const CLAVE = 'saborupc:carrito';
   const pesos = new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 });
 
-  const TOKENS_URL = document.currentScript && document.currentScript.dataset.tokens || 'https://design-tokens-saborupc.onrender.com/tokens.css';
+  // document.currentScript solo existe mientras el script se ejecuta: se lee aquí, de forma síncrona
+  const TOKENS_URL = (document.currentScript && document.currentScript.dataset.tokens)
+    || 'https://design-tokens-saborupc.onrender.com/tokens.css';
+
+  const esc = s => String(s).replace(/[&<>"']/g,
+    c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
   function cargarTokens() {
     if (document.getElementById('car-tokens')) return;
-    if (!document.querySelector(`link[href="${TOKENS_URL}"]`)) {
+    if (!document.querySelector('link[href="' + TOKENS_URL + '"]')) {
       const link = document.createElement('link');
       link.id = 'car-tokens';
       link.rel = 'stylesheet';
@@ -44,8 +53,22 @@
     .car-exito { background: #eaf6ea; color: var(--color-exito, #1b7a3e); padding: 12px; border-radius: 4px; }
   `;
 
-  // ---- Estado propio del micro frontend (vive mientras el script esté cargado)
-  const items = [];          // [{ id, nombre, precio, cantidad }]
+  // ---- Estado propio del micro frontend, persistido en sessionStorage
+  function cargar() {
+    try {
+      const g = JSON.parse(sessionStorage.getItem(CLAVE) || '[]');
+      return Array.isArray(g)
+        ? g.filter(it => it && it.id !== undefined && Number.isFinite(it.precio) && it.cantidad > 0)
+        : [];
+    } catch (e) {
+      return [];              // storage bloqueado o JSON dañado: arranca vacío
+    }
+  }
+  function guardar() {
+    try { sessionStorage.setItem(CLAVE, JSON.stringify(items)); } catch (e) { /* sin storage: sigue en memoria */ }
+  }
+
+  const items = cargar();    // [{ id, nombre, precio, cantidad }]
   let idMontado = null;      // si está en pantalla, dónde
   let mensaje = '';
 
@@ -67,8 +90,9 @@
     return subtotal() + servicio();
   }
 
-  // Publica el estado del carrito (v2: incluye subtotal, servicio y version)
+  // Guarda y publica el estado del carrito (v2: incluye subtotal, servicio y version)
   function publicarEstado() {
+    guardar();
     const cantidad = items.reduce((acc, it) => acc + it.cantidad, 0);
     window.dispatchEvent(new CustomEvent('carrito:actualizado', {
       detail: {
@@ -84,19 +108,25 @@
   // El carrito escucha desde que se carga su script (por eso el contenedor lo precarga)
   window.addEventListener('carrito:agregar', function (e) {
     const plato = e.detail;
-    const existente = items.find(it => it.id === plato.id);
+    const precio = plato ? Number(plato.precio) : NaN;
+    // Un evento mal formado de otro micro frontend no debe corromper los totales
+    if (!plato || plato.id === undefined || plato.id === null || !Number.isFinite(precio)) return;
+
+    const existente = items.find(it => String(it.id) === String(plato.id));
     if (existente) existente.cantidad += 1;
-    else items.push({ id: plato.id, nombre: plato.nombre, precio: plato.precio, cantidad: 1 });
+    else items.push({ id: plato.id, nombre: plato.nombre, precio: precio, cantidad: 1 });
     mensaje = '';
     publicarEstado();
     if (idMontado) pintar();
   });
 
   function pintar() {
-    const raiz = document.getElementById(idMontado);
+    const raiz = idMontado && document.getElementById(idMontado);
+    if (!raiz) return;   // el contenedor quitó el nodo sin llamar a unmountCarrito
+
     let html = `<h2 class="car-titulo">Tu carrito</h2>
                 <span class="car-version">mfe-carrito v${VERSION}</span>`;
-    if (mensaje) html += `<p class="car-exito">${mensaje}</p>`;
+    if (mensaje) html += `<p class="car-exito">${esc(mensaje)}</p>`;
 
     if (items.length === 0) {
       html += '<p class="car-vacio">El carrito está vacío. Agrega platos desde el catálogo.</p>';
@@ -107,9 +137,9 @@
     html += `<table class="car-tabla">
       <tr><th>Plato</th><th>Cantidad</th><th>Subtotal</th><th></th></tr>
       ${items.map(it => `<tr>
-          <td>${it.nombre}</td><td>${it.cantidad}</td>
+          <td>${esc(it.nombre)}</td><td>${it.cantidad}</td>
           <td>${pesos.format(it.precio * it.cantidad)}</td>
-          <td><button class="car-quitar" data-id="${it.id}">Quitar</button></td>
+          <td><button class="car-quitar" data-id="${esc(it.id)}">Quitar</button></td>
         </tr>`).join('')}
     </table>
 
@@ -126,7 +156,7 @@
 
   function alHacerClic(e) {
     if (e.target.matches('.car-quitar')) {
-      const i = items.findIndex(it => it.id === Number(e.target.dataset.id));
+      const i = items.findIndex(it => String(it.id) === e.target.dataset.id);
       if (i >= 0) items.splice(i, 1);
       publicarEstado();
       pintar();
@@ -151,17 +181,29 @@
   }
 
   window.renderCarrito = function (idContenedor) {
+    const raiz = document.getElementById(idContenedor);
+    if (!raiz) return;
+
+    // Si estaba montado en otro contenedor, suelta ese
+    if (idMontado && idMontado !== idContenedor) {
+      const anterior = document.getElementById(idMontado);
+      if (anterior) anterior.removeEventListener('click', alHacerClic);
+    }
+
     cargarTokens();
     asegurarEstilos();
     idMontado = idContenedor;
-    document.getElementById(idContenedor).addEventListener('click', alHacerClic);
+    raiz.addEventListener('click', alHacerClic);
     pintar();
+    publicarEstado();   // sincroniza el contador del contenedor al montar (p. ej. tras recargar)
   };
 
   window.unmountCarrito = function (idContenedor) {
     const raiz = document.getElementById(idContenedor);
-    raiz.removeEventListener('click', alHacerClic);
-    raiz.innerHTML = '';
+    if (raiz) {
+      raiz.removeEventListener('click', alHacerClic);
+      raiz.innerHTML = '';
+    }
     idMontado = null;
     mensaje = '';
   };

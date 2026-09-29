@@ -9,7 +9,6 @@
     .item { font-family: monospace; padding: 4px 0; }
     .ok  { color: #1b7a3e; }
     .mal { color: #c0392b; }
-    #montaje { margin-top: 16px; border-top: 1px solid #ddd; padding-top: 12px; }
   </style>
 </head>
 <body>
@@ -19,11 +18,15 @@
   <h3>Salida del montaje</h3>
   <div id="raiz-local"></div>
 
+  <!-- Partir de cero: debe ir ANTES de cargar carrito.js, porque el script lee el storage al cargarse -->
+  <script>sessionStorage.removeItem('saborupc:carrito');</script>
   <script src="carrito.js" data-tokens="https://design-tokens-saborupc.onrender.com/tokens.css"></script>
   <script>
+    const CLAVE = 'saborupc:carrito';
     const resultados = document.getElementById('resultados');
     let ultimoActualizado = null;
     let ultimoConfirmado = null;
+    let leidoPorV1 = null;
 
     function check(nombre, condicion) {
       console.assert(condicion, nombre);
@@ -32,9 +35,15 @@
       div.textContent = (condicion ? '✓ ' : '✗ ') + nombre;
       resultados.appendChild(div);
     }
+    const guardado = () => JSON.parse(sessionStorage.getItem(CLAVE) || '[]');
 
     window.addEventListener('carrito:actualizado', (e) => { ultimoActualizado = e.detail; });
     window.addEventListener('pedido:confirmado',   (e) => { ultimoConfirmado   = e.detail; });
+    // Consumidor v1: solo lee cantidad y total (compatibilidad hacia atrás con detail v2)
+    window.addEventListener('carrito:actualizado', (e) => {
+      const { cantidad, total } = e.detail;
+      leidoPorV1 = { cantidad, total };
+    });
 
     window.addEventListener('load', () => {
       // 1. Funciones expuestas
@@ -47,41 +56,51 @@
       check('El montaje genera contenido', raiz.children.length > 0);
       check('Contiene título "carrito"', raiz.textContent.toLowerCase().includes('carrito'));
 
-      // 3. Reacciona a carrito:agregar y emite carrito:actualizado v2
+      // 3. Reacciona a carrito:agregar y emite carrito:actualizado v2 (dispatchEvent es síncrono)
       window.dispatchEvent(new CustomEvent('carrito:agregar', {
         detail: { id: 9001, nombre: 'Plato de prueba', precio: 10000 }
       }));
+      check('Se emitió carrito:actualizado', !!ultimoActualizado);
+      if (ultimoActualizado) {
+        const d = ultimoActualizado;
+        check('detail.cantidad es number', typeof d.cantidad === 'number');
+        check('detail.subtotal es number', typeof d.subtotal === 'number');
+        check('detail.servicio es number', typeof d.servicio === 'number');
+        check('detail.total es number',    typeof d.total === 'number');
+        check('detail.version === 2',      d.version === 2);
+        check('servicio = 10% del subtotal', d.servicio === Math.round(d.subtotal * 0.10));
+        check('total = subtotal + servicio', d.total === d.subtotal + d.servicio);
+      }
+      check('Consumidor v1 sigue funcionando con detail v2',
+            !!leidoPorV1 && typeof leidoPorV1.cantidad === 'number' && typeof leidoPorV1.total === 'number');
 
-      setTimeout(() => {
-        check('Se emitió carrito:actualizado', !!ultimoActualizado);
-        if (ultimoActualizado) {
-          const d = ultimoActualizado;
-          check('detail.cantidad es number', typeof d.cantidad === 'number');
-          check('detail.subtotal es number', typeof d.subtotal === 'number');
-          check('detail.servicio es number', typeof d.servicio === 'number');
-          check('detail.total es number',    typeof d.total === 'number');
-          check('detail.version === 2',      d.version === 2);
-          check('servicio = 10% del subtotal',
-                d.servicio === Math.round(d.subtotal * 0.10));
-        }
+      // 4. Persistencia y resistencia a eventos mal formados
+      check('El carrito quedó guardado en sessionStorage', guardado().length === 1);
+      window.dispatchEvent(new CustomEvent('carrito:agregar', { detail: { nombre: 'Sin id ni precio' } }));
+      check('Un evento mal formado no altera el carrito', guardado().length === 1);
 
-        // 4. Confirmar pedido → pedido:confirmado v1
-        const boton = raiz.querySelector('.car-confirmar');
-        check('Existe botón .car-confirmar', !!boton);
-        if (boton) {
-          boton.click();
-          setTimeout(() => {
-            check('Se emitió pedido:confirmado', !!ultimoConfirmado);
-            if (ultimoConfirmado) {
-              const p = ultimoConfirmado;
-              check('detail.id es number',       typeof p.id === 'number');
-              check('detail.items es array',     Array.isArray(p.items));
-              check('detail.total es number',    typeof p.total === 'number');
-              check('detail.version === 1',      p.version === 1);
-            }
-          }, 50);
+      // 5. Confirmar pedido → pedido:confirmado v1
+      const boton = raiz.querySelector('.car-confirmar');
+      check('Existe botón .car-confirmar', !!boton);
+      if (boton) {
+        boton.click();
+        check('Se emitió pedido:confirmado', !!ultimoConfirmado);
+        if (ultimoConfirmado) {
+          const p = ultimoConfirmado;
+          check('detail.id es number',   typeof p.id === 'number');
+          check('detail.items es array', Array.isArray(p.items));
+          check('cada item tiene id, nombre, precio y cantidad',
+                p.items.length > 0 && p.items.every(i => ['id', 'nombre', 'precio', 'cantidad'].every(k => k in i)));
+          check('detail.total es number', typeof p.total === 'number');
+          check('detail.version === 1',   p.version === 1);
         }
-      }, 100);
+        check('Al confirmar, el carrito guardado queda vacío', guardado().length === 0);
+      }
+
+      // 6. Desmontaje
+      window.unmountCarrito('raiz-local');
+      check('unmountCarrito deja el contenedor vacío', raiz.innerHTML === '');
+      window.renderCarrito('raiz-local');   // vuelve a montar solo para que se vea la salida
     });
   </script>
 </body>
