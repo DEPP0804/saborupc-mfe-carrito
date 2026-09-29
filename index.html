@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>mfe-carrito (modo independiente)</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 24px; background: #fafafa; }
+    .banda { background: #fff3c4; padding: 8px 12px; margin-bottom: 16px; font-size: 13px; }
+    .eventos { font-family: monospace; font-size: 12px; background: #fff; padding: 12px; border-radius: 6px; }
+  </style>
+</head>
+<body>
+  <div class="banda">
+    Modo independiente: simulamos el evento del catálogo con estos botones.
+    <button onclick="simular(101, 'Plato de prueba A', 10000)">Simular plato A</button>
+    <button onclick="simular(102, 'Plato de prueba B', 2500)">Simular plato B</button>
+  </div>
+  <div id="raiz-local"></div>
+
+  <h3>Eventos publicados</h3>
+  <div class="eventos" id="eventos"></div>
+
+  <script src="carrito.js"></script>
+  <script>
+    function simular(id, nombre, precio) {
+      window.dispatchEvent(new CustomEvent('carrito:agregar', { detail: { id, nombre, precio } }));
+    }
+    function log(nombre, detail) {
+      const el = document.getElementById('eventos');
+      const p = document.createElement('div');
+      p.textContent = nombre + ' → ' + JSON.stringify(detail);
+      el.appendChild(p);
+    }
+    window.addEventListener('carrito:actualizado', function (e) { log('carrito:actualizado', e.detail); });
+    window.addEventListener('pedido:confirmado',   function (e) { log('pedido:confirmado',   e.detail); });
+    window.renderCarrito('raiz-local');
+  </script>
+</body>
+</html>
