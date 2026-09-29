@@ -4,13 +4,25 @@
 // Publica:  'carrito:actualizado'  { cantidad, subtotal, servicio, total, version }  (v2)
 // Publica:  'pedido:confirmado'    { id, items, total, version }                     (v1)
 (function () {
+    if (window.renderCarrito) return;  // ya cargado
   const VERSION = '1.1.0';
   const PORCENTAJE_SERVICIO = 0.10; // 10 %
   const pesos = new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 });
 
-  const CSS = `
-    @import url('http://localhost:8081/tokens.css');
+  const TOKENS_URL = document.currentScript && document.currentScript.dataset.tokens || 'https://design-tokens-saborupc.onrender.com/tokens.css';
 
+  function cargarTokens() {
+    if (document.getElementById('car-tokens')) return;
+    if (!document.querySelector(`link[href="${TOKENS_URL}"]`)) {
+      const link = document.createElement('link');
+      link.id = 'car-tokens';
+      link.rel = 'stylesheet';
+      link.href = TOKENS_URL;
+      document.head.appendChild(link);
+    }
+  }
+
+  const CSS = `
     .car-titulo { color: var(--color-primario, #0b4f8a); margin: 0 0 4px; }
     .car-version { font-size: 12px; color: #888; }
     .car-tabla { width: 100%; border-collapse: collapse; margin: 16px 0; background: #fff; }

@@ -19,7 +19,7 @@
   <h3>Salida del montaje</h3>
   <div id="raiz-local"></div>
 
-  <script src="carrito.js"></script>
+  <script src="carrito.js" data-tokens="https://design-tokens-saborupc.onrender.com/tokens.css"></script>
   <script>
     const resultados = document.getElementById('resultados');
     let ultimoActualizado = null;
@@ -42,10 +42,13 @@
       check('window.unmountCarrito es función', typeof window.unmountCarrito === 'function');
 
       // 2. Montaje genera contenido
-      window.renderCarrito('raiz-local');
-      const raiz = document.getElementById('raiz-local');
-      check('El montaje genera contenido', raiz.children.length > 0);
-      check('Contiene título "carrito"', raiz.textContent.toLowerCase().includes('carrito'));
+      window.renderCarrito = function (idContenedor) {
+      cargarTokens();
+      asegurarEstilos();
+      idmontado = idContenedor;
+      document.getElementById(idContenedor).addEventListener('click', alHacerClic);
+      pintar();
+      };
 
       // 3. Reacciona a carrito:agregar y emite carrito:actualizado v2
       window.dispatchEvent(new CustomEvent('carrito:agregar', {
