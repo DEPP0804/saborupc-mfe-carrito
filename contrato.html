@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Contrato · mfe-carrito</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 24px; background: #fafafa; }
+    h1 { font-size: 18px; }
+    .item { font-family: monospace; padding: 4px 0; }
+    .ok  { color: #1b7a3e; }
+    .mal { color: #c0392b; }
+    #montaje { margin-top: 16px; border-top: 1px solid #ddd; padding-top: 12px; }
+  </style>
+</head>
+<body>
+  <h1>Prueba de contrato · mfe-carrito</h1>
+  <div id="resultados"></div>
+
+  <h3>Salida del montaje</h3>
+  <div id="raiz-local"></div>
+
+  <script src="carrito.js"></script>
+  <script>
+    const resultados = document.getElementById('resultados');
+    let ultimoActualizado = null;
+    let ultimoConfirmado = null;
+
+    function check(nombre, condicion) {
+      console.assert(condicion, nombre);
+      const div = document.createElement('div');
+      div.className = 'item ' + (condicion ? 'ok' : 'mal');
+      div.textContent = (condicion ? '✓ ' : '✗ ') + nombre;
+      resultados.appendChild(div);
+    }
+
+    window.addEventListener('carrito:actualizado', (e) => { ultimoActualizado = e.detail; });
+    window.addEventListener('pedido:confirmado',   (e) => { ultimoConfirmado   = e.detail; });
+
+    window.addEventListener('load', () => {
+      // 1. Funciones expuestas
+      check('window.renderCarrito es función',  typeof window.renderCarrito === 'function');
+      check('window.unmountCarrito es función', typeof window.unmountCarrito === 'function');
+
+      // 2. Montaje genera contenido
+      window.renderCarrito('raiz-local');
+      const raiz = document.getElementById('raiz-local');
+      check('El montaje genera contenido', raiz.children.length > 0);
+      check('Contiene título "carrito"', raiz.textContent.toLowerCase().includes('carrito'));
+
+      // 3. Reacciona a carrito:agregar y emite carrito:actualizado v2
+      window.dispatchEvent(new CustomEvent('carrito:agregar', {
+        detail: { id: 9001, nombre: 'Plato de prueba', precio: 10000 }
+      }));
+
+      setTimeout(() => {
+        check('Se emitió carrito:actualizado', !!ultimoActualizado);
+        if (ultimoActualizado) {
+          const d = ultimoActualizado;
+          check('detail.cantidad es number', typeof d.cantidad === 'number');
+          check('detail.subtotal es number', typeof d.subtotal === 'number');
+          check('detail.servicio es number', typeof d.servicio === 'number');
+          check('detail.total es number',    typeof d.total === 'number');
+          check('detail.version === 2',      d.version === 2);
+          check('servicio = 10% del subtotal',
+                d.servicio === Math.round(d.subtotal * 0.10));
+        }
+
+        // 4. Confirmar pedido → pedido:confirmado v1
+        const boton = raiz.querySelector('.car-confirmar');
+        check('Existe botón .car-confirmar', !!boton);
+        if (boton) {
+          boton.click();
+          setTimeout(() => {
+            check('Se emitió pedido:confirmado', !!ultimoConfirmado);
+            if (ultimoConfirmado) {
+              const p = ultimoConfirmado;
+              check('detail.id es number',       typeof p.id === 'number');
+              check('detail.items es array',     Array.isArray(p.items));
+              check('detail.total es number',    typeof p.total === 'number');
+              check('detail.version === 1',      p.version === 1);
+            }
+          }, 50);
+        }
+      }, 100);
+    });
+  </script>
+</body>
+</html>
