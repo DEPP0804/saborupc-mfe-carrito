@@ -151,6 +151,7 @@
   }
 
   window.renderCarrito = function (idContenedor) {
+    cargarTokens();
     asegurarEstilos();
     idMontado = idContenedor;
     document.getElementById(idContenedor).addEventListener('click', alHacerClic);

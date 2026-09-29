@@ -42,13 +42,10 @@
       check('window.unmountCarrito es función', typeof window.unmountCarrito === 'function');
 
       // 2. Montaje genera contenido
-      window.renderCarrito = function (idContenedor) {
-      cargarTokens();
-      asegurarEstilos();
-      idmontado = idContenedor;
-      document.getElementById(idContenedor).addEventListener('click', alHacerClic);
-      pintar();
-      };
+      window.renderCarrito('raiz-local');
+      const raiz = document.getElementById('raiz-local');
+      check('El montaje genera contenido', raiz.children.length > 0);
+      check('Contiene título "carrito"', raiz.textContent.toLowerCase().includes('carrito'));
 
       // 3. Reacciona a carrito:agregar y emite carrito:actualizado v2
       window.dispatchEvent(new CustomEvent('carrito:agregar', {
@@ -56,7 +53,6 @@
       }));
 
       setTimeout(() => {
-        const raiz = document.getElementById('raiz-local');
         check('Se emitió carrito:actualizado', !!ultimoActualizado);
         if (ultimoActualizado) {
           const d = ultimoActualizado;
